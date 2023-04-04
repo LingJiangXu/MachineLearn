@@ -2,6 +2,43 @@ import numpy as np
 import pandas as pd
 
 
+# 属性值判断
+def compare_value(value1, value2):
+    # 暂不支持ndarray对象，因为ndarray里整数元素类型不为int，而是nd.int32等类型(solved),pd.series不得不解决掉
+    # 穷尽分支判断，还没找到更巧妙的方法
+    iter_list = [list, tuple, set, dict]
+    ty_1, ty_2 = type(value1), type(value2)
+    int_ls = [int, np.int32, np.int64]
+    if ty_1 in int_ls and ty_2 in int_ls:
+        return value1 == value2
+    elif ty_1 == str and ty_2 == str:
+        return value1 == value2
+    elif ty_1 in int_ls and ty_2 == str:
+        return eval(str(value1) + value2)
+    elif ty_2 in int_ls and ty_1 == str:
+        return eval(str(value2) + value1)
+    elif ty_1 in iter_list or ty_2 in iter_list:
+        if ty_1 in iter_list and ty_2 in iter_list:
+            pass
+        elif ty_1 in iter_list:
+            value2 = [value2 for i in range(len(value1))]
+        elif ty_2 in iter_list:
+            value1 = [value1 for i in range(len(value2))]
+        return tuple(map( lambda x, y: compare_value(x,y), value1, value2))
+    elif ty_1 == pd.Series or ty_2 == pd.Series:
+        if ty_1 in int_ls or ty_2 in int_ls:
+            return value1 == value2
+        elif ty_1 == str:
+            return value2.map( lambda x: eval(str(x) + value1) )
+        elif ty_2 == str:
+            return value1.map( lambda x: eval(str(x) + value2) )
+        elif ty_1 == pd.Series and ty_2 == pd.Series:
+            return value1 == value2
+    else:
+        print("WARNING IN COMPARE_VALUE! ", ty_1, ty_2)
+
+
+
 # 样本集类
 class Samples:
     def __init__(self, dataframe):
@@ -16,32 +53,50 @@ class Samples:
 
     # 更改属性的属性值
     def change_featureValue(self, feature, value):
+        # 原本计划是更改某一属性的取值空间，并在样本数据中对应更改，例如 色泽=[白、黑、绿]改成[红、蓝、紫]
+        # 样本上在色泽的取值也对应发生变化
+        # 但考虑到处理连续属性值时，每次划分属性并非固有属性。见西瓜书P85
+        # 因此此函数采用第一种思路，即用于属性空间“彻底”改变
         self.feature_space[feature] = value
 
+    def __continue_featureValue_divie(self, feature, t):
+        # 此函数采用第二种思路，即用于连续值处理，属性空间被划分，但原本属性值不变
+        self.feature_space[feature] = ["<"+str(t), ">="+str(t)]
+        # 根据分割值t将连续数据划分成二值属性
+
     # 由属性feature划分样本集
-    def groupBy(self, feature, feature_space=None):
+    def groupBy(self, feature, feature_space=None, continue_pro=False):
         # 在生成决策树GenTree中，子节点在划分子节点可能遇到划分属性feature在被划分子节点上取值不全，此时需要指定属性空间（即包含所有属性值的属性空间）。默认不指定，方便后面计算子节点的信息熵、基尼指数、IV等。
         result = []
-        if feature_space:
+        if feature_space and not continue_pro:
+            # 仅当传入feature_space且不指定属性值为连续
             for aStar in feature_space[feature]:
-                bolen = self.samples[feature] == aStar
+                bolen = compare_value(self.samples[feature], aStar)   #1、传入compare得时list 2、bool列表要转为pd.series（改进compare函数，否者下面bool切片会出现错误，因为没有保存index信息，忽略此条）
                 # if not any(bolen):  # 若全为false，即在在属性没有这个属性值时
                 #     samples_by_aStart = None
                 samples_by_aStart = Samples(self.samples.loc[bolen])
                 result.append((aStar, samples_by_aStart))  # feature值不全时，返回值与划分集合的元组
         else:
             for aStar in self.feature_space[feature]:
-                samples_by_aStart = Samples(self.samples.loc[self.samples[feature] == aStar])
-                result.append(samples_by_aStart)
+                bolen = compare_value(self.samples[feature], aStar)
+                samples_by_aStart = Samples(self.samples.loc[bolen])
+                if feature_space and continue_pro:
+                    result.append((aStar, samples_by_aStart))
+                else:
+                    result.append(samples_by_aStart)
         return result
 
     # 样本中属性或标记 为 属性值aSatr或标记值label占比
     def _prob(self, aStar_or_labelStar, features_or_labels="labels"):
         if features_or_labels == "labels" or features_or_labels == self.labels:
-            labelStar_num = np.sum(self.samples_labels == aStar_or_labelStar)  # 样本集中标记为label的样本数
+            # 默认为对标签
+            bolen = compare_value(self.samples_labels.iloc[:,0], aStar_or_labelStar)
+            labelStar_num = np.sum(bolen)       # 样本集中标记为label的样本数
             return labelStar_num / self.size
         else:
-            aStar_num = np.sum(self.samples_features[features_or_labels] == aStar_or_labelStar)  # 样本集中给定属性中某属性值的样本数
+            # 指定对某一属性
+            bolen = compare_value(self.samples_features[features_or_labels], aStar_or_labelStar)
+            aStar_num = np.sum(bolen)  # 样本集中给定属性中某属性值的样本数
             return aStar_num / self.size
 
     # 判断样本集是否为空
@@ -55,7 +110,9 @@ class Samples:
     # 判断样本集(未被划分的)属性是否为空
     def is_empty_feature(self, feature_list=None):
         # 与groupBy类似，在生成决策树GenTree中，feature属性组成的列表在变化，随每次划分而减少一个
-        if not feature_list:
+        if feature_list is None:
+            # attention！ "if not feature_list:"，当传入参数为“{}”时，任然会视为没有传参的情况，
+            # 即把self.features作为fearture_list，从而产生错误
             feature_list = self.features
         return len(feature_list) == 0
 
@@ -81,11 +138,29 @@ class Samples:
         return np.round(result, 3)
 
     # 样本集中属性a的基尼指数
-    def gini_index(self, feature):
-        temp_result = []
-        for sample in self.groupBy(feature):
-            temp_result.append(sample.size / self.size * sample.gini())
-        return np.round(np.sum(temp_result), 3)
+    def gini_index(self, feature, continue_pro=False):
+        if continue_pro:
+            temp = []
+            result = -1
+            result_t = -1
+            iters = self.samples[feature].drop_duplicates()[1:] \
+                if len(self.samples[feature].drop_duplicates()) > 1 \
+                else [0]
+            for t in  iters:
+                self.__continue_featureValue_divie(feature, t)
+                for sample in self.groupBy(feature):
+                    temp.append(sample.size / self.size * sample.gini())
+                temp_result = np.round(np.sum(temp), 3)
+                if temp_result > result:
+                    result = temp_result
+                    result_t = t
+            self.__continue_featureValue_divie(feature,result_t)
+            return result
+        else:
+            temp_result = []
+            for sample in self.groupBy(feature):
+                temp_result.append(sample.size / self.size * sample.gini())
+            return np.round(np.sum(temp_result), 3)
 
     # 样本集的信息熵
     def ent(self):
@@ -158,7 +233,7 @@ def GenerateDecisionTree(sample_set):
         temp = []
         for fea in features:
             if method == "Gini_index":
-                temp.append(node.gini_index(fea))
+                temp.append(node.gini_index(fea, continue_pro=True))
             elif method == "Gain":
                 temp.append(node.gain(fea))
             elif method == "Gain_ratio":
@@ -166,7 +241,7 @@ def GenerateDecisionTree(sample_set):
             else:
                 print("候选的选取划分属性的方法为Gini_index、Gain、Gain_ratio")
         result = dict(zip(features, temp))
-        return max(result, key=result.get)
+        return max(result, key=result.get) if method in ["Gian", "Gain_ratio"] else min(result, key=result.get)
 
     # 决策树生成(嵌套在main函数中，一方面每次迭代更改feature_exit，另一方面保持root_feature_space不变)
     node = Node(sample_set)
@@ -185,7 +260,7 @@ def GenerateDecisionTree(sample_set):
             feature = find_divide_feature(node, features_exit)
             node.set_divide_feature(feature)  # 给被划分的节点标记划分依据
             features_exit.remove(feature)  # 从为作为划分依据的属性列表中去除feature
-            for cond_samp in node.groupBy(feature, root_feature_space):
+            for cond_samp in node.groupBy(feature, root_feature_space, continue_pro=True):
                 condition, samp = cond_samp
                 child_node = Node(samp.samples)
                 node.add_child(child_node)  # 将子节点添加到父节点的“子节点列表”
@@ -209,22 +284,39 @@ def GenerateDecisionTree(sample_set):
 # 预测函数
 def prediction(valdata, tre):
     root = tre[0]
-    while not root.leaf:
+    while root.leaf is None:
+        # "while not root.leaf"会在root.leaf 为0时陷入死循环
         feature = root.divFeat
         value = valdata[feature][0]
+        origin_address = id(root)
         for chilNode in root.child:
-            if chilNode.divCon == value:
+            # !!如果value值没有对应的子节点属性值相等，会进入死循环。
+            # 例如，训练集中feature上取值为1，2，3，而预测样本在该feature上取值为4，则会进入遍历死循环
+            # 解决方案1：在生成决策树时放弃取值不满的属性
+            # 方案2：在此处遇到此类情况，报错
+            # 方案3：属性值不离散，转化为连续值处理
+            if compare_value(chilNode.divCon, value):
                 root = chilNode
+        if id(root) == origin_address:
+            # 如果进行到这，root未被子节点赋值
+            print(f'预测样本feature {feature} 的value值 {value} 没有对应的子节点属性值相等')
+            for chilNode in root.child:
+                print(chilNode.divCon)
+            break
     pred_label = root.leaf
     return pred_label
 
 
 if __name__ == '__main__':
-    dataset = pd.read_csv("./test_data.csv").iloc[:, 1:]
-    valdata = pd.read_csv("./val.csv").iloc[:, 1:]
+    # dataset = pd.read_csv("./test_data.csv").iloc[:, 1:]
+    # valdata = pd.read_csv("./val.csv").iloc[:, 1:]
+    train_x = pd.read_csv("./data/fashion-mnist_train.csv").iloc[:100, 1:30]
+    train_y = pd.read_csv("./data/fashion-mnist_train.csv").iloc[:100, [0]]
+    dataset = pd.concat([train_x, train_y], axis=1)
+    test_x = pd.read_csv("./data/fashion-mnist_test.csv").iloc[[0], 1:30]
+    test_y = pd.read_csv("./data/fashion-mnist_test.csv").iloc[[0], [0]]
+    valdata = test_x
     tree = GenerateDecisionTree(dataset)
     pred = prediction(valdata, tree)
-    print(pred)
-
-    import pandas as pd
-    import numpy as np
+    print("pre:", pred)
+    print("tru:", test_y.iloc[0, 0])
