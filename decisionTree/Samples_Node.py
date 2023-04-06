@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+
 # 属性值判断
 def compare_value(value1, value2):
     # 暂不支持ndarray对象，因为ndarray里整数元素类型不为int，而是nd.int32等类型(solved),pd.series不得不解决掉
@@ -23,14 +24,14 @@ def compare_value(value1, value2):
             value2 = [value2 for i in range(len(value1))]
         elif ty_2 in iter_list:
             value1 = [value1 for i in range(len(value2))]
-        return tuple(map( lambda x, y: compare_value(x,y), value1, value2))
+        return tuple(map(lambda x, y: compare_value(x, y), value1, value2))
     elif ty_1 == pd.Series or ty_2 == pd.Series:
         if ty_1 in int_ls or ty_2 in int_ls:
             return value1 == value2
         elif ty_1 == str:
-            return value2.map( lambda x: eval(str(x) + value1) )
+            return value2.map(lambda x: eval(str(x) + value1))
         elif ty_2 == str:
-            return value1.map( lambda x: eval(str(x) + value2) )
+            return value1.map(lambda x: eval(str(x) + value2))
         elif ty_1 == pd.Series and ty_2 == pd.Series:
             return value1 == value2
     else:
@@ -59,7 +60,7 @@ class Samples:
 
     def __continue_featureValue_divie(self, feature, t):
         # 此函数采用第二种思路，即用于连续值处理，属性空间被划分，但原本属性值不变
-        self.feature_space[feature] = ["<"+str(t), ">="+str(t)]
+        self.feature_space[feature] = ["<" + str(t), ">=" + str(t)]
         # 根据分割值t将连续数据划分成二值属性
 
     # 由属性feature划分样本集
@@ -69,7 +70,9 @@ class Samples:
         if feature_space and not continue_pro:
             # 仅当传入feature_space且不指定属性值为连续
             for aStar in feature_space[feature]:
-                bolen = compare_value(self.samples[feature], aStar)   #1、传入compare得时list 2、bool列表要转为pd.series（改进compare函数，否者下面bool切片会出现错误，因为没有保存index信息，忽略此条）
+                bolen = compare_value(self.samples[feature], aStar)
+                # 1、传入compare得时list 2、bool列表要转为pd.series（改进compare函数，否者下面bool
+                # 切片会出现错误，因为没有保存index信息，忽略此条）
                 # if not any(bolen):  # 若全为false，即在在属性没有这个属性值时
                 #     samples_by_aStart = None
                 samples_by_aStart = Samples(self.samples.loc[bolen])
@@ -88,8 +91,8 @@ class Samples:
     def _prob(self, aStar_or_labelStar, features_or_labels="labels"):
         if features_or_labels == "labels" or features_or_labels == self.labels:
             # 默认为对标签
-            bolen = compare_value(self.samples_labels.iloc[:,0], aStar_or_labelStar)
-            labelStar_num = np.sum(bolen)       # 样本集中标记为label的样本数
+            bolen = compare_value(self.samples_labels.iloc[:, 0], aStar_or_labelStar)
+            labelStar_num = np.sum(bolen)  # 样本集中标记为label的样本数
             return labelStar_num / self.size
         else:
             # 指定对某一属性
@@ -144,7 +147,7 @@ class Samples:
             iters = self.samples[feature].drop_duplicates()[1:] \
                 if len(self.samples[feature].drop_duplicates()) > 1 \
                 else [0]
-            for t in  iters:
+            for t in iters:
                 self.__continue_featureValue_divie(feature, t)
                 for sample in self.groupBy(feature):
                     temp.append(sample.size / self.size * sample.gini())
@@ -152,7 +155,7 @@ class Samples:
                 if temp_result > result:
                     result = temp_result
                     result_t = t
-            self.__continue_featureValue_divie(feature,result_t)
+            self.__continue_featureValue_divie(feature, result_t)
             return result
         else:
             temp_result = []
