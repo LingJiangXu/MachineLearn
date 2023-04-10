@@ -51,20 +51,20 @@ class Samples:
         self.size = len(self.samples)  # 样本量
 
     # 更改属性的属性值
-    def change_featureValue(self, feature, value):
+    def change_featureValue(self, feature: str, value: int or str) -> None:
         # 原本计划是更改某一属性的取值空间，并在样本数据中对应更改，例如 色泽=[白、黑、绿]改成[红、蓝、紫]
         # 样本上在色泽的取值也对应发生变化
         # 但考虑到处理连续属性值时，每次划分属性并非固有属性。见西瓜书P85
         # 因此此函数采用第一种思路，即用于属性空间“彻底”改变
         self.feature_space[feature] = value
 
-    def __continue_featureValue_divie(self, feature, t):
+    def __continue_featureValue_divide__(self, feature: str, t: int) -> None:
         # 此函数采用第二种思路，即用于连续值处理，属性空间被划分，但原本属性值不变
         self.feature_space[feature] = ["<" + str(t), ">=" + str(t)]
         # 根据分割值t将连续数据划分成二值属性
 
     # 由属性feature划分样本集
-    def groupBy(self, feature, feature_space=None, continue_pro=False):
+    def groupBy(self, feature: str, feature_space=None, continue_pro=False) -> list:
         # 在生成决策树GenTree中，子节点在划分子节点可能遇到划分属性feature在被划分子节点上取值不全，此时需要指定属性空间（即包含所有属性值的属性空间）。默认不指定，方便后面计算子节点的信息熵、基尼指数、IV等。
         result = []
         if feature_space and not continue_pro:
@@ -88,7 +88,7 @@ class Samples:
         return result
 
     # 样本中属性或标记 为 属性值aSatr或标记值label占比
-    def _prob(self, aStar_or_labelStar, features_or_labels="labels"):
+    def _prob(self, aStar_or_labelStar: int or str, features_or_labels="labels") -> np.float:
         if features_or_labels == "labels" or features_or_labels == self.labels:
             # 默认为对标签
             bolen = compare_value(self.samples_labels.iloc[:, 0], aStar_or_labelStar)
@@ -101,15 +101,15 @@ class Samples:
             return aStar_num / self.size
 
     # 判断样本集是否为空
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return len(self.samples_features) == 0
 
     # 判断样本集是否类别相同
-    def is_same_label(self):
+    def is_same_label(self) -> bool:
         return len(self.label_space) == 1
 
     # 判断样本集(未被划分的)属性是否为空
-    def is_empty_feature(self, feature_list=None):
+    def is_empty_feature(self, feature_list=None) -> bool:
         # 与groupBy类似，在生成决策树GenTree中，feature属性组成的列表在变化，随每次划分而减少一个
         if feature_list is None:
             # attention！ "if not feature_list:"，当传入参数为“{}”时，任然会视为没有传参的情况，
@@ -118,11 +118,11 @@ class Samples:
         return len(feature_list) == 0
 
     # 判断样本集是否属性取值相同
-    def is_same_feature(self):
+    def is_same_feature(self) -> bool:
         return len(self.samples_features.drop_duplicates()) == 1
 
     # 返回标签类别最多的类别
-    def most_label(self):
+    def most_label(self) -> np.int or np.float or str:
         if self.is_same_label():
             return self.label_space.iloc[0, 0]
         else:
@@ -131,7 +131,7 @@ class Samples:
             return max(label_list, key=lambda x: label_list.count(x))  # 返回list中出现次数最多的元素
 
     # 样本集的基尼指数
-    def gini(self):
+    def gini(self) -> np.float:
         temp_result = []
         for label in self.label_space.iloc[:, -1]:
             temp_result.append(self._prob(label))
@@ -139,7 +139,7 @@ class Samples:
         return np.round(result, 3)
 
     # 样本集中属性a的基尼指数
-    def gini_index(self, feature, continue_pro=False):
+    def gini_index(self, feature: str, continue_pro=False) -> np.float:
         if continue_pro:
             temp = []
             result = -1
@@ -148,14 +148,14 @@ class Samples:
                 if len(self.samples[feature].drop_duplicates()) > 1 \
                 else [0]
             for t in iters:
-                self.__continue_featureValue_divie(feature, t)
+                self.__continue_featureValue_divide__(feature, t)
                 for sample in self.groupBy(feature):
                     temp.append(sample.size / self.size * sample.gini())
                 temp_result = np.round(np.sum(temp), 3)
                 if temp_result > result:
                     result = temp_result
                     result_t = t
-            self.__continue_featureValue_divie(feature, result_t)
+            self.__continue_featureValue_divide__(feature, result_t)
             return result
         else:
             temp_result = []
@@ -164,7 +164,7 @@ class Samples:
             return np.round(np.sum(temp_result), 3)
 
     # 样本集的信息熵
-    def ent(self):
+    def ent(self) -> np.float:
         temp_result = []
         for label in self.label_space.iloc[:, -1]:
             temp_result.append(self._prob(label))
@@ -172,7 +172,7 @@ class Samples:
         return np.round(result, 3)
 
     # 样本集中属性a的信息增益
-    def gain(self, feature):
+    def gain(self, feature: str) -> np.float:
         ent = self.ent()
         temp_result = []
         for samp in self.groupBy(feature):
@@ -181,7 +181,7 @@ class Samples:
         return np.round(result, 3)
 
     # 样本集中属性a的信息增益率
-    def gain_ratio(self, feature):
+    def gain_ratio(self, feature: str) -> np.float:
         gain = self.gain(feature)
         temp_result = []
         for aStar in self.feature_space[feature]:
@@ -192,31 +192,31 @@ class Samples:
 
 
 # 节点类
-class Node(Samples):
-    def __init__(self, dataframe):
-        super().__init__(dataframe)
+class Node:
+    def __init__(self, dataframe: Samples):
+        self.samples = dataframe
         self.child = []  # 当前节点的子节点列表
         self.divFeat = None
         self.divCon = None
         self.leaf = None
 
     # 将child_node添加为子节点列表
-    def add_child(self, child_node):
+    def add_child(self, child_node) -> None:
         if self.leaf:
             print("当前节点为叶节点，无法添加子节点")
         else:
             self.child.append(child_node)
 
     # 节点作为父节点，指定划分为子节点的依据（即按什么属性划分）
-    def set_divide_feature(self, feature):
+    def set_divide_feature(self, feature: str) -> None:
         self.divFeat = feature
 
     # 节点作为子节点，指定被划分的条件（即满足划分属性的什么条件）
-    def set_divide_condition(self, condition):
+    def set_divide_condition(self, condition: int or str) -> None:
         self.divCon = condition
 
     # 将节点设置为叶节点
-    def node2leaf(self, label):
+    def node2leaf(self, label: int or str) -> None:
         if self.child:
             print("当前节点已有子节点，无法成为叶节点")
         else:

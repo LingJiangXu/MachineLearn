@@ -6,53 +6,53 @@ from Samples_Node import Samples, Node, compare_value
 
 
 # 根据sample_set生成决策树
-def GenerateDecisionTree(sample_set):
+def GenerateDecisionTree(sample_set: pd.DataFrame) -> list:
     features_exit = list(Samples(sample_set).features)  # 未被作为划分依据的属性列表
     root_feature_space = Samples(sample_set).feature_space  # 属性的所有取值组成的空间
     Tree = []  # 决策树，将节点和叶子存放于此
 
     # 寻找最优属性划分的属性
-    def find_divide_feature(node_pa, features, method="Gini_index"):
+    def find_divide_feature(node_pa: Node, features: list, method="Gini_index") -> str or int:
         temp = []
         for fea in features:
             if method == "Gini_index":
-                temp.append(node_pa.gini_index(fea, continue_pro=True))
+                temp.append(node_pa.samples.gini_index(fea, continue_pro=True))
             elif method == "Gain":
-                temp.append(node_pa.gain(fea))
+                temp.append(node_pa.samples.gain(fea))
             elif method == "Gain_ratio":
-                temp.append(node_pa.gain_ratio(fea))
+                temp.append(node_pa.samples.gain_ratio(fea))
             else:
                 print("候选的选取划分属性的方法为Gini_index、Gain、Gain_ratio")
         result = dict(zip(features, temp))
         return max(result, key=result.get) if method in ["Gian", "Gain_ratio"] else min(result, key=result.get)
 
     # 决策树生成(嵌套在main函数中，一方面每次迭代更改feature_exit，另一方面保持root_feature_space不变)
-    node = Node(sample_set)
+    node = Node(Samples(sample_set) )
     Tree.append(node)  # 根节点就放入节点列表，以供返回
 
-    def GenTree(node_param, features_exit_pa, root_feature_space_pa):
+    def GenTree(node_param: Node, features_exit_pa: list, root_feature_space_pa: dict) -> None:
         # 第一种情况
-        if node_param.is_same_label():
-            label = node_param.most_label()
+        if node_param.samples.is_same_label():
+            label = node_param.samples.most_label()
             node_param.node2leaf(label)
         # 第二种情况
-        elif node_param.is_same_feature() or node_param.is_empty_feature(features_exit_pa):
-            label = node_param.most_label()
+        elif node_param.samples.is_same_feature() or node_param.samples.is_empty_feature(features_exit_pa):
+            label = node_param.samples.most_label()
             node_param.node2leaf(label)
         else:
             feature = find_divide_feature(node_param, features_exit_pa)
             print(feature)
             node_param.set_divide_feature(feature)  # 给被划分的节点标记划分依据
             features_exit_pa.remove(feature)  # 从为作为划分依据的属性列表中去除feature
-            for cond_samp in node_param.groupBy(feature, root_feature_space_pa, continue_pro=True):
+            for cond_samp in node_param.samples.groupBy(feature, root_feature_space_pa, continue_pro=True):
                 condition, samp = cond_samp
-                child_node = Node(samp.samples)
+                child_node = Node(samp)
                 node_param.add_child(child_node)  # 将子节点添加到父节点的“子节点列表”
                 Tree.append(child_node)  # 每生成一个字节点就放入节点列表，以供返回
                 child_node.set_divide_condition(condition)  # 给被划分的节点标记划分条件
                 # 第三种情况
-                if child_node.is_empty():
-                    label = node_param.most_label()
+                if child_node.samples.is_empty():
+                    label = node_param.samples.most_label()
                     child_node.node2leaf(label)
                 else:
                     GenTree(child_node, features_exit_pa, root_feature_space_pa)
